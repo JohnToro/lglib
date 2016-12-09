@@ -12,6 +12,7 @@ plugins:
 - PDF libraries
   * FPDF, by Olivier PLATHEY
   * HTML2PDF, by Laurent MINGUET
+- Message storage and retrieval for inter-plugin messaging
 
 These scripts, especially the calendar, may not work correctly if they are
 loaded more than once, so this plugin becomes the single source for them.
@@ -26,5 +27,4 @@ takes over the system cron function to prevent any long-running tasks such
 as database backups from affecting site visitors.
 
 In addition to the FPDF and HTML2PDF libraries mentioned above, this
-plugin also includes NameParser.class.pdf ((c) Josh Fraser).
-
+plugin also includes NameParser.class.php ((c) Josh Fraser).

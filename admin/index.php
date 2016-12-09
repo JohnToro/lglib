@@ -10,7 +10,6 @@
 *               GNU Public License v2 or later
 *   @filesource
 */
-
 require_once '../../../lib-common.php';
 require_once '../../auth.inc.php';
 
@@ -20,15 +19,9 @@ $pi_title = $_LGLIB_CONF['pi_display_name'] . ' ' .
 LGLIB_setGlobal('pi_title', $pi_title);
 
 // If user isn't a root user or if the backup feature is disabled, bail.
-if (!SEC_inGroup('Root') OR $_CONF['allow_mysqldump'] == 0) {
-    $display .= COM_siteHeader('menu', $pi_title);
-    $display .= COM_startBlock($MESSAGE[30], '',
-                    COM_getBlockTemplate('_msg_block', 'header'));
-    $display .= $MESSAGE[46];
-    $display .= COM_endBlock(COM_getBlockTemplate('_msg_block', 'footer'));
-    $display .= COM_siteFooter();
-    COM_accessLog("User {$_USER['username']} tried to illegally access the database backup screen.");
-    echo $display;
+if (!SEC_inGroup('Root') || GVERSION > '1.6.0') {
+    COM_accessLog("User {$_USER['username']} tried to illegally access the lglib admin page.");
+    COM_404();
     exit;
 }
 
@@ -76,11 +69,11 @@ function DBADMIN_menu($explanation = '')
     $menu_arr = array(
         array('url' => LGLIB_ADMIN_URL,
               'text' => $LANG_LGLIB['list_backups']),
-        array('url' => LGLIB_ADMIN_URL . '?backup=x&amp;'.CSRF_TOKEN.'='.$token,
+        array('url' => LGLIB_ADMIN_URL . '/index.php?backup=x&amp;'.CSRF_TOKEN.'='.$token,
               'text' => $LANG_ADMIN['create_new']),
-        array('url' => LGLIB_ADMIN_URL . '?config=x',
+        array('url' => LGLIB_ADMIN_URL . '/index.php?config=x',
               'text' => 'Configure'),
-        array('url' => $_CONF['site_admin_url'],
+        array('url' => $_CONF['site_admin_url'] . '/index.php',
               'text' => $LANG_ADMIN['admin_home']),
     );
     //$retval .= COM_startBlock($pi_title,
@@ -134,7 +127,7 @@ function DBADMIN_list()
         $icon_img = COM_createImage($diskIconUrl, $alt, $attr);
 
         for ($i = 0; $i < $num_backups; $i++) {
-            $downloadUrl = LGLIB_ADMIN_URL . '?download=x&amp;file='
+            $downloadUrl = LGLIB_ADMIN_URL . '/index.php?download=x&amp;file='
                          . urlencode($backups[$i]);
 
             $downloadLink = COM_createLink($icon_img, $downloadUrl, $attr);
@@ -158,13 +151,13 @@ function DBADMIN_list()
         );
 
         $text_arr = array(
-            'form_url' => LGLIB_ADMIN_URL,
+            'form_url' => LGLIB_ADMIN_URL . '/index.php',
         );
         $form_arr = array('bottom' => '', 'top' => '');
         if ($num_backups > 0) {
-            $form_arr['bottom'] = '<input type="hidden" name="delete" value="x"' . XHTML . '>'
+            $form_arr['bottom'] = '<input type="hidden" name="delete" value="x" />'
                                 . '<input type="hidden" name="' . CSRF_TOKEN
-                                . '" value="' . $token . '"' . XHTML . '>' . LB;
+                                . '" value="' . $token . '" />' . LB;
         }
         $options = array('chkselect' => true, 'chkminimum' => 0,
                              'chkfield' => 'filename');

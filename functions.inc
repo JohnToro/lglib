@@ -5,10 +5,10 @@
 *   required by other plugins.
 *
 *   @author     Lee Garner <lee@leegarner.com>
-*   @copyright  Copyright (c) 2012-2014 Lee Garner <lee@leegarner.com>
+*   @copyright  Copyright (c) 2012-2016 Lee Garner <lee@leegarner.com>
 *   @package    lglib
-*   @version    0.0.7
-*   @license    http://opensource.org/licenses/gpl-2.0.php 
+*   @version    1.0.3
+*   @license    http://opensource.org/licenses/gpl-2.0.php
 *               GNU Public License v2 or later
 *   @filesource
 */
@@ -19,7 +19,7 @@ if (!defined('GVERSION')) {
 if (GVERSION < '1.5.0') {
     // Enable Mootools and disable jQuery
     $_SYSTEM['disable_mootools'] = false;
-    $_SYSTEM['disable_jquery'] = true;
+    $_SYSTEM['disable_jquery_slimbox'] = true;
 }
 
 /** Import configuration-handling class */
@@ -83,6 +83,11 @@ SESS_setVar('lglib', array(
     'path_to_mogrify' => $_CONF['path_to_mogrify'],
 ));
 
+// Set default message location to top center unless otherwise set
+if (!isset($_SYSTEM['alert_position'])) {
+    $_SYSTEM['alert_position'] = 'top-center';
+}
+
 /**
 *   Include the plugin-specific language file, and the corresponding
 *   admin-created custom language file, if any.  Looks for the site
@@ -100,7 +105,6 @@ if (is_file("$langpath/custom/$langfile")) {
     /** Include any custom language file, if found */
     include_once "$langpath/custom/$langfile";
 }
-
 
 /** Include the user-supplied configuration file, if any */
 if (is_file(LGLIB_PI_PATH . '/config.php')) {
@@ -152,7 +156,7 @@ function USES_lglib_class_fpdf($file='')
 }
 
 function USES_lglib_class_html2pdf()
-{   require_once LGLIB_PI_PATH . '/classes/pdf/html2pdf/html2pdf.class.php'; }
+{   require_once LGLIB_PI_PATH . '/classes/pdf/html2pdf/vendor/autoload.php'; }
 
 /**
 *   Get the currently installed version.
@@ -167,19 +171,17 @@ function plugin_chkVersion_lglib()
 
 
 /**
-* This will put an option for the plugin in the command and control block 
-* on moderation.php
+*   Puts an option for the plugin in the command and control block.
+*   Not used in glFusion versions > 1.6.0 since the database backup function
+*   has been updated in the main DB Backup option.
 *
-* Add the plugin name, icon and link to the command and control block in 
-* moderation.php
-*
-* @return   array  Array containing (plugin name, admin url, url of plugin icon)
+*   @return   array  Array of (plugin name, admin url, url of plugin icon)
 */
-function plugin_cclabel_lglib() 
+function plugin_cclabel_lglib()
 {
-    global $LANG_LGLIB;
+    global $LANG_LGLIB, $_CONF;
 
-    if (SEC_inGroup('Root')) {
+    if (SEC_inGroup('Root') && GVERSION < '1.6.1' && $_CONF['allow_mysql_dump']) {
         return array(
             $LANG_LGLIB['menu_label'],
             LGLIB_ADMIN_URL . '/index.php',
@@ -190,12 +192,13 @@ function plugin_cclabel_lglib()
     }
 }
 
+
 /**
 *   Adds the plugin to the Admin menu.
 *
 *   @return array   Array(pi_name, admin url, # of items) or '' for none.
 */
-function plugin_getadminoption_lglib() 
+function plugin_getadminoption_lglib()
 {
     global $LANG_LGLIB;
 
@@ -246,10 +249,10 @@ function plugin_getheadercss_lglib()
     );
 
     // Either jQuery or Mootools version
-    if (!$_SYSTEM['disable_mootools']) {
+    if (!isset($_SYSTEM['disable_mootools']) || $_SYSTEM['disable_mootools'] == false) {
         $files[] = "{$prefix}slimbox.css";
     }
-    if (!$_SYSTEM['disable_jquery']) {
+    if (!isset($_SYSTEM['disable_jquery_slimbox']) || $_SYSTEM['disable_jquery_slimbox'] == false) {
         $files[] = "{$prefix}slimbox2.css";
     }
 
@@ -307,11 +310,16 @@ function plugin_getheaderjs_lglib()
     );
 
     // Either jQuery or Mootools
-    if (!$_SYSTEM['disable_mootools']) {
+    if (!isset($_SYSTEM['disable_mootools']) || $_SYSTEM['disable_mootools'] == false) {
         $files[] = "$js_dir/slimbox.js";
-    }
-    if (!$_SYSTEM['disable_jquery']) {
-        $files[] = "$js_dir/slimbox2.js";
+    } /*else {
+        $files[] = "$js_dir/lglib_misc.js";
+    }*/
+
+    if (!isset($_SYSTEM['disable_jquery_slimbox']) || $_SYSTEM['disable_jquery_slimbox'] == false) {
+        if (GVERSION < '1.6.0') {
+            $files[] = "$js_dir/slimbox2.js";
+        }
         if ($_LGLIB_CONF['slimbox_autoactivation']) {
             // no 'rel="slimbox"' tags needed
             $files[] = "$js_dir/autoactivation.js";
@@ -432,13 +440,17 @@ function plugin_upgrade_lglib()
 
 /**
 *   Set template variables.
+*   Puts any messages to be displayed into the lglib_messags
+*   template variable, if used, or appends them to the info_block
+*   variable that should be part of every header.thtml template.
 *
 *   @param  string  $templatename   Name of template, e.g. 'header'
 *   @param  ref     $template       Reference to actual template
 */
 function plugin_templateSetVars_lglib($templatename, &$template)
 {
-    global $topic;
+    global $_CONF_LGLIB;
+
     static $messages = NULL;
 
     // Get messages to display to the user and put them in the template
@@ -447,7 +459,15 @@ function plugin_templateSetVars_lglib($templatename, &$template)
     if ($messages === NULL) {
         $messages = LGLIB_showAllMessages();
     }
-    $template->set_var('lglib_messages', $messages);
+    if ($messages == '') return;
+    if ($_CONF_LGLIB['use_lglib_messages']) {
+        $template->set_var('lglib_messages', $messages);
+    } elseif ($templatename == 'footer') {
+        // Have to do this during the 'footer' template to make sure it's
+        // only done once.
+        $info_block = $template->get_var('info_block') . $messages;
+        $template->set_var('info_block', $info_block);
+    }
 }
 
 
@@ -472,11 +492,10 @@ function LGLIB_invokeService($type, $action, $args, &$output, &$svc_msg)
 
     $output  = '';
     $svc_msg = '';
-
     // Check if the plugin type and action are valid
     $function = 'service_' . $action . '_' . $type;
     if (function_exists($function)) {
-        if (!isset($args['gl_svc'])) {
+        if (is_array($args) && !isset($args['gl_svc'])) {
             $args['gl_svc'] = false;
         }
         $retval = $function($args, $output, $svc_msg);
@@ -565,7 +584,10 @@ function LGLIB_storeMessage($args, $title='', $persist=false, $expires = '',
 
 
 /**
-*   Retrieve all messages for display
+*   Retrieve all messages for display.
+*   Gets all messages from the DB where the user ID matches for
+*   non-anonymous users, OR the session ID matches. This allows a message
+*   caused by an anonymous action to be displayed to the user after login.
 *
 *   @return array   Array of messages, title=>message
 */
@@ -680,8 +702,6 @@ function LGLIB_expireMessages()
 */
 function LGLIB_showAllMessages($persist = false)
 {
-    global $_USER;
-
     $retval = '';
 
     LGLIB_expireMessages();
@@ -846,7 +866,7 @@ function LGLIB_getSession($name, $remove=false)
     return $retval;
 }
 
-    
+
 /**
 *   Log activity to a plugin-specific log file
 *   Logs will be written to /private/logs/<pi_name>.log
@@ -944,7 +964,7 @@ function LGLIB_ImageUrl($orig_path, $width=0, $height=0, $rnd = 0)
 
     // Separate the path and create a MD5 hash of its path and size
     $path_parts = pathinfo($orig_path);
-    $disp_fname = md5("$rnd-$orig_path-$width-$height") . '.' . 
+    $disp_fname = md5("$rnd-$orig_path-$width-$height") . '.' .
             $path_parts['extension'];
 
     // Image path portion of url
@@ -1099,6 +1119,5 @@ function LGLIB_update_job_status($jobid, $status)
             SET status = '{$status}'
             WHERE id = $jobid");
 }
-
 
 ?>
